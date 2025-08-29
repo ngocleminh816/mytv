@@ -1,0 +1,65 @@
+name: Build & Deploy Pages
+
+on:
+  workflow_dispatch:      # allow manual trigger
+  schedule:
+    - cron: "0 * * * *"   # hourly, UTC
+  push:
+    branches: ["main"]
+    paths:
+      - "scripts/**"
+      - ".github/workflows/publish.yml"
+      - "source.m3u"
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - name: Install deps
+        run: pip install requests
+
+      - name: Generate playlist
+        env:
+          SOURCE_URL: ${{ secrets.SOURCE_URL }}       # from Secrets
+          UDXPY_HOST: ${{ vars.UDXPY_HOST || '192.168.50.1' }}
+          UDXPY_PORT: ${{ vars.UDXPY_PORT || '8889' }}
+          OUTPUT_FILENAME: ${{ vars.OUTPUT_FILENAME || 'playlist.m3u' }}
+        run: python scripts/generate_m3u.py
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+        with:
+          enablement: true
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: ./public
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
